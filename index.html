@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>부동산 실시간 대시보드</title>
+    <title>부동산 매물 대시보드</title>
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; padding: 20px; background-color: #f5f5f5; }
         .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -16,17 +16,18 @@
 </head>
 <body>
     <div class="container">
-        <h2>부동산 매물 대시보드</h2>
+        <h2>부동산 매물 모니터링 대시보드</h2>
         <table>
             <thead>
                 <tr>
+                    <th>단지 번호</th>
                     <th>동 / 층</th>
                     <th>가격</th>
                     <th>링크</th>
                 </tr>
             </thead>
             <tbody id="resultBody">
-                <tr><td colspan="3" style="color: #666;">데이터를 불러오는 중입니다...</td></tr>
+                <tr><td colspan="4" style="color: #666;">데이터를 불러오는 중입니다...</td></tr>
             </tbody>
         </table>
     </div>
@@ -41,12 +42,13 @@
                 const tbody = document.getElementById('resultBody');
                 
                 if(data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3">수집된 매물이 없습니다.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4">수집된 매물이 없습니다.</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = data.map(item => `
                     <tr>
+                        <td><strong>${item.complex_id}</strong></td>
                         <td>${item.building} / ${item.floor}</td>
                         <td style="font-weight: bold; color: #d32f2f;">${item.price_text}</td>
                         <td><a href="${item.link}" target="_blank">보러가기</a></td>
@@ -55,7 +57,7 @@
 
             } catch (error) {
                 document.getElementById('resultBody').innerHTML = 
-                    '<tr><td colspan="3" style="color:red;">데이터를 불러오지 못했습니다. GitHub Actions에서 크롤러가 정상 실행되었는지 확인하세요.</td></tr>';
+                    '<tr><td colspan="4" style="color:red;">데이터를 불러오지 못했습니다. 크롤러를 먼저 실행해 주세요.</td></tr>';
             }
         }
 
