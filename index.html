@@ -3,135 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>부동산 매물 대시보드</title>
+    <title>부동산 실시간 대시보드</title>
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; padding: 20px; background-color: #f5f5f5; }
         .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .controls { display: flex; gap: 10px; margin-bottom: 20px; }
-        input[type="text"] { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        select { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        table { width: 100%; border-collapse: collapse; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { padding: 12px; text-align: center; border-bottom: 1px solid #ddd; }
-        th { background-color: #03c75a; color: white; cursor: pointer; user-select: none; }
-        th:hover { background-color: #02a34a; }
+        th { background-color: #f8f9fa; color: #333; }
         a { color: #0066cc; text-decoration: none; font-weight: bold; }
         a:hover { text-decoration: underline; }
-        .star { cursor: pointer; color: #ccc; font-size: 1.2em; }
-        .star.active { color: #ffb300; }
-        .priority-row { background-color: #fff9e6; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>실시간 매물 모니터링 대시보드</h2>
-        
-        <div class="controls">
-            <input type="text" id="searchInput" placeholder="단지명 또는 동 검색 (예: 마포자이 101동)">
-            <select id="typeSelect">
-                <option value="전체">모든 거래</option>
-                <option value="매매">매매</option>
-                <option value="전세">전세</option>
-                <option value="월세">월세</option>
-            </select>
-        </div>
-
+        <h2>부동산 매물 대시보드</h2>
         <table>
             <thead>
                 <tr>
-                    <th onclick="sortBy('priority')">관심</th>
-                    <th onclick="sortBy('name')">단지명 ↕</th>
-                    <th onclick="sortBy('type')">구분 ↕</th>
-                    <th onclick="sortBy('building')">동/층 ↕</th>
-                    <th onclick="sortBy('price_int')">가격 ↕</th>
+                    <th>동 / 층</th>
+                    <th>가격</th>
                     <th>링크</th>
                 </tr>
             </thead>
-            <tbody id="resultBody"></tbody>
+            <tbody id="resultBody">
+                <tr><td colspan="3" style="color: #666;">데이터를 불러오는 중입니다...</td></tr>
+            </tbody>
         </table>
     </div>
 
     <script>
-        let propertyData = [];
-        let currentSortCol = 'price_int';
-        let isAscending = true;
-        let favorites = JSON.parse(localStorage.getItem('favProperties')) || [];
+        async function loadData() {
+            try {
+                const response = await fetch('data.json');
+                if (!response.ok) throw new Error('데이터 없음');
+                
+                const data = await response.json();
+                const tbody = document.getElementById('resultBody');
+                
+                if(data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3">수집된 매물이 없습니다.</td></tr>';
+                    return;
+                }
 
-        fetch('data.json')
-            .then(response => response.json())
-            .then(data => {
-                propertyData = data;
-                renderTable();
-            })
-            .catch(error => console.error('데이터를 로드할 수 없습니다.', error));
-
-        const searchInput = document.getElementById('searchInput');
-        const typeSelect = document.getElementById('typeSelect');
-        const resultBody = document.getElementById('resultBody');
-
-        searchInput.addEventListener('input', renderTable);
-        typeSelect.addEventListener('change', renderTable);
-
-        function toggleFavorite(id) {
-            if (favorites.includes(id)) {
-                favorites = favorites.filter(favId => favId !== id);
-            } else {
-                favorites.push(id);
-            }
-            localStorage.setItem('favProperties', JSON.stringify(favorites));
-            renderTable();
-        }
-
-        function sortBy(column) {
-            if (currentSortCol === column) {
-                isAscending = !isAscending;
-            } else {
-                currentSortCol = column;
-                isAscending = true;
-            }
-            renderTable();
-        }
-
-        function renderTable() {
-            const searchText = searchInput.value.toLowerCase();
-            const selectedType = typeSelect.value;
-
-            let filtered = propertyData.filter(item => {
-                const searchTarget = (item.name + " " + item.building).toLowerCase();
-                const matchSearch = searchTarget.includes(searchText);
-                const matchType = selectedType === "전체" || item.type === selectedType;
-                return matchSearch && matchType;
-            });
-
-            filtered.sort((a, b) => {
-                const aFav = favorites.includes(a.id) ? 1 : 0;
-                const bFav = favorites.includes(b.id) ? 1 : 0;
-
-                if (aFav !== bFav) return bFav - aFav; 
-
-                let valA = a[currentSortCol];
-                let valB = b[currentSortCol];
-
-                if (valA < valB) return isAscending ? -1 : 1;
-                if (valA > valB) return isAscending ? 1 : -1;
-                return 0;
-            });
-
-            resultBody.innerHTML = filtered.map(item => {
-                const isFav = favorites.includes(item.id);
-                return `
-                    <tr class="${isFav ? 'priority-row' : ''}">
-                        <td class="star ${isFav ? 'active' : ''}" onclick="toggleFavorite('${item.id}')">
-                            ${isFav ? '★' : '☆'}
-                        </td>
-                        <td>${item.name}</td>
-                        <td>${item.type}</td>
+                tbody.innerHTML = data.map(item => `
+                    <tr>
                         <td>${item.building} / ${item.floor}</td>
                         <td style="font-weight: bold; color: #d32f2f;">${item.price_text}</td>
                         <td><a href="${item.link}" target="_blank">보러가기</a></td>
                     </tr>
-                `;
-            }).join('');
+                `).join('');
+
+            } catch (error) {
+                document.getElementById('resultBody').innerHTML = 
+                    '<tr><td colspan="3" style="color:red;">데이터를 불러오지 못했습니다. GitHub Actions에서 크롤러가 정상 실행되었는지 확인하세요.</td></tr>';
+            }
         }
+
+        loadData();
     </script>
 </body>
 </html>
