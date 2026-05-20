@@ -1,93 +1,137 @@
-import json
-import asyncio
-import re
-from playwright.async_api import async_playwright
-
-# 크롤링 대상 단지 5개 (예시)
-TARGET_LIST = [
-    {"name": "염리동삼성래미안", "type": "매매", "url": "https://new.land.naver.com/complexes/1111?ms=...&a=APT&b=A1&e=RETAIL"},
-    {"name": "마포자이", "type": "매매", "url": "https://new.land.naver.com/complexes/2222?ms=...&a=APT&b=A1&e=RETAIL"},
-    # 필요한 단지 URL을 추가하세요.
-]
-
-def parse_price_to_int(price_str):
-    """'10억 5,000' 형태의 문자열을 정수형 원 단위로 변환 (정렬 용도)"""
-    clean_str = price_str.replace(",", "").replace(" ", "").replace("원", "")
-    total = 0
-    if "억" in clean_str:
-        parts = clean_str.split("억")
-        total += int(parts[0]) * 100000000
-        if len(parts) > 1 and parts[1]:
-            total += int(parts[1]) * 10000
-    else:
-        total += int(clean_str) * 10000
-    return total
-
-async def main():
-    results = []
-    
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=['--disable-blink-features=AutomationControlled']
-        )
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = await context.new_page()
-
-        for target in TARGET_LIST:
-            try:
-                await page.goto(target["url"], wait_until="networkidle")
-                await page.wait_for_selector(".item_inner", timeout=15000)
-                
-                # 매물 리스트 엘리먼트 가져오기
-                items = await page.query_selector_all(".item_inner")
-                
-                for item in items:
-                    # 매물 고유 번호 추출 (링크 생성용)
-                    parent_a = await item.query_selector("a.item_link")
-                    article_id = ""
-                    if parent_a:
-                        class_attr = await parent_a.get_attribute("class")
-                        # class 속성에서 매물 번호 추출 로직 (실제 HTML 구조에 맞춰 정규식 조정 필요)
-                        match = re.search(r'article:(\d+)', class_attr or "")
-                        if match:
-                            article_id = match.group(1)
-
-                    # 가격 정보 추출
-                    price_el = await item.query_selector(".price_line .price")
-                    price_text = await price_el.inner_text() if price_el else "0"
-                    
-                    # 동/층 정보 추출 (예: "101동", "고/15")
-                    info_el = await item.query_selector_all(".info_area .line")
-                    building = await info_el[0].inner_text() if len(info_el) > 0 else "정보없음"
-                    floor = await info_el[1].inner_text() if len(info_el) > 1 else "정보없음"
-
-                    link = f"https://new.land.naver.com/articles/{article_id}" if article_id else target["url"]
-
-                    results.append({
-                        "id": article_id or str(hash(building + price_text)), # 고유 식별자
-                        "name": target["name"],
-                        "type": target["type"],
-                        "building": building,
-                        "floor": floor,
-                        "price_text": price_text,
-                        "price_int": parse_price_to_int(price_text),
-                        "link": link
-                    })
-
-                # 차단 방지 대기
-                await asyncio.sleep(5) 
-                
-            except Exception as e:
-                print(f"{target['name']} 크롤링 중 오류: {e}")
-
-        await browser.close()
-
-    # JSON 파일 저장
-    with open("data.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=4)
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>부동산 매물 대시보드</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; padding: 20px; background-color: #f5f5f5; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        input[type="text"] { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        select { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: center; border-bottom: 1px solid #ddd; }
+        th { background-color: #03c75a; color: white; cursor: pointer; user-select: none; }
+        th:hover { background-color: #02a34a; }
+        a { color: #0066cc; text-decoration: none; font-weight: bold; }
+        a:hover { text-decoration: underline; }
+        .star { cursor: pointer; color: #ccc; font-size: 1.2em; }
+        .star.active { color: #ffb300; }
+        .priority-row { background-color: #fff9e6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>실시간 매물 모니터링 대시보드</h2>
         
-if __name__ == "__main__":
-    asyncio.run(main())
+        <div class="controls">
+            <input type="text" id="searchInput" placeholder="단지명 또는 동 검색 (예: 마포자이 101동)">
+            <select id="typeSelect">
+                <option value="전체">모든 거래</option>
+                <option value="매매">매매</option>
+                <option value="전세">전세</option>
+                <option value="월세">월세</option>
+            </select>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th onclick="sortBy('priority')">관심</th>
+                    <th onclick="sortBy('name')">단지명 ↕</th>
+                    <th onclick="sortBy('type')">구분 ↕</th>
+                    <th onclick="sortBy('building')">동/층 ↕</th>
+                    <th onclick="sortBy('price_int')">가격 ↕</th>
+                    <th>링크</th>
+                </tr>
+            </thead>
+            <tbody id="resultBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        let propertyData = [];
+        let currentSortCol = 'price_int';
+        let isAscending = true;
+        let favorites = JSON.parse(localStorage.getItem('favProperties')) || [];
+
+        fetch('data.json')
+            .then(response => response.json())
+            .then(data => {
+                propertyData = data;
+                renderTable();
+            })
+            .catch(error => console.error('데이터를 로드할 수 없습니다.', error));
+
+        const searchInput = document.getElementById('searchInput');
+        const typeSelect = document.getElementById('typeSelect');
+        const resultBody = document.getElementById('resultBody');
+
+        searchInput.addEventListener('input', renderTable);
+        typeSelect.addEventListener('change', renderTable);
+
+        function toggleFavorite(id) {
+            if (favorites.includes(id)) {
+                favorites = favorites.filter(favId => favId !== id);
+            } else {
+                favorites.push(id);
+            }
+            localStorage.setItem('favProperties', JSON.stringify(favorites));
+            renderTable();
+        }
+
+        function sortBy(column) {
+            if (currentSortCol === column) {
+                isAscending = !isAscending;
+            } else {
+                currentSortCol = column;
+                isAscending = true;
+            }
+            renderTable();
+        }
+
+        function renderTable() {
+            const searchText = searchInput.value.toLowerCase();
+            const selectedType = typeSelect.value;
+
+            let filtered = propertyData.filter(item => {
+                const searchTarget = (item.name + " " + item.building).toLowerCase();
+                const matchSearch = searchTarget.includes(searchText);
+                const matchType = selectedType === "전체" || item.type === selectedType;
+                return matchSearch && matchType;
+            });
+
+            filtered.sort((a, b) => {
+                const aFav = favorites.includes(a.id) ? 1 : 0;
+                const bFav = favorites.includes(b.id) ? 1 : 0;
+
+                if (aFav !== bFav) return bFav - aFav; 
+
+                let valA = a[currentSortCol];
+                let valB = b[currentSortCol];
+
+                if (valA < valB) return isAscending ? -1 : 1;
+                if (valA > valB) return isAscending ? 1 : -1;
+                return 0;
+            });
+
+            resultBody.innerHTML = filtered.map(item => {
+                const isFav = favorites.includes(item.id);
+                return `
+                    <tr class="${isFav ? 'priority-row' : ''}">
+                        <td class="star ${isFav ? 'active' : ''}" onclick="toggleFavorite('${item.id}')">
+                            ${isFav ? '★' : '☆'}
+                        </td>
+                        <td>${item.name}</td>
+                        <td>${item.type}</td>
+                        <td>${item.building} / ${item.floor}</td>
+                        <td style="font-weight: bold; color: #d32f2f;">${item.price_text}</td>
+                        <td><a href="${item.link}" target="_blank">보러가기</a></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    </script>
+</body>
+</html>
