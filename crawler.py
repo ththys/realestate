@@ -41,4 +41,33 @@ def main():
             for item in article_list:
                 article_id = str(item.get('articleNo', ''))
                 building = item.get('buildingName', '정보없음')
-                floor_info = item.get('floorInfo', '
+                floor_info = item.get('floorInfo', '정보없음')
+                price_text = item.get('dealOrWarrantPrc', '0')
+                
+                # 단지명과 거래유형은 일단 고정값으로 넣습니다. (원하시면 '해당단지이름'을 실제 이름으로 변경하세요)
+                results.append({
+                    "id": article_id,
+                    "name": "모니터링 단지", 
+                    "type": "매매", 
+                    "building": building,
+                    "floor": floor_info,
+                    "price_text": price_text,
+                    "price_int": parse_price_to_int(price_text),
+                    "link": f"https://new.land.naver.com/articles/{article_id}"
+                })
+            
+            print(f" -> {len(article_list)}개 매물 수집 성공.")
+        else:
+            print(f" -> 실패: 상태 코드 {response.status_code}")
+            
+    except Exception as e:
+        print(f" -> 오류 발생: {e}")
+
+    # 결과를 JSON으로 저장
+    with open("data.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=4)
+    
+    print("수집 완료 및 저장 성공.")
+
+if __name__ == "__main__":
+    main()
