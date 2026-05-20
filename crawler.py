@@ -3,11 +3,11 @@ import asyncio
 import re
 from playwright.async_api import async_playwright
 
-# ※ 중요: 본인이 모니터링할 5개 단지의 실제 네이버 부동산 URL로 대체해야 합니다.
+# 검색할 단지명과 거래 유형만 지정 (URL 필요 없음)
 TARGET_LIST = [
-    {"name": "염리동삼성래미안", "type": "매매", "url": "https://new.land.naver.com/complexes/1111?ms=...&a=APT&b=A1&e=RETAIL"},
-    {"name": "염리동삼성래미안", "type": "전세", "url": "https://new.land.naver.com/complexes/1111?ms=...&a=APT&b=A1&e=RETAIL"},
-    {"name": "마포자이", "type": "매매", "url": "https://new.land.naver.com/complexes/2222?ms=...&a=APT&b=A1&e=RETAIL"},
+    {"name": "염리동삼성래미안", "type": "매매"},
+    {"name": "마포자이", "type": "전세"},
+    {"name": "마포래미안푸르지오", "type": "매매"}
 ]
 
 def parse_price_to_int(price_str):
@@ -37,11 +37,38 @@ async def main():
 
         for target in TARGET_LIST:
             try:
-                await page.goto(target["url"], wait_until="networkidle")
-                await page.wait_for_selector(".item_inner", timeout=15000)
+                # 1. 네이버 부동산 메인 화면 접속
+                await page.goto("https://new.land.naver.com/complexes", wait_until="networkidle")
                 
+                # 2. 검색창 찾기 및 단지명 입력
+                search_input = await page.wait_for_selector(".search_input", timeout=10000)
+                await search_input.fill(target["name"])
+                await search_input.press("Enter")
+                
+                # 3. 검색 결과 자동완성 목록 대기 후 첫 번째 결과 클릭
+                await page.wait_for_selector(".autocomplete_list .item a", timeout=10000)
+                first_result = await page.query_selector(".autocomplete_list .item a")
+                if first_result:
+                    await first_result.click()
+                else:
+                    print(f"{target['name']} - 검색 결과를 찾을 수 없습니다.")
+                    continue
+                
+                # 4. 지도 로딩 대기
+                await asyncio.sleep(3) 
+
+                # 5. 거래 유형(매매, 전세, 월세) 탭 클릭
+                type_btn_selector = f"button:has-text('{target['type']}')"
+                await page.wait_for_selector(type_btn_selector, timeout=5000)
+                type_btn = await page.query_selector(type_btn_selector)
+                if type_btn:
+                    await type_btn.click()
+                
+                # 6. 매물 리스트 로딩 대기
+                await page.wait_for_selector(".item_inner", timeout=10000)
                 items = await page.query_selector_all(".item_inner")
                 
+                # 7. 데이터 추출
                 for item in items:
                     parent_a = await item.query_selector("a.item_link")
                     article_id = ""
@@ -58,7 +85,7 @@ async def main():
                     building = await info_el[0].inner_text() if len(info_el) > 0 else "정보없음"
                     floor = await info_el[1].inner_text() if len(info_el) > 1 else "정보없음"
 
-                    link = f"https://new.land.naver.com/articles/{article_id}" if article_id else target["url"]
+                    link = f"https://new.land.naver.com/articles/{article_id}" if article_id else page.url
 
                     results.append({
                         "id": article_id or str(hash(building + price_text)),
@@ -71,10 +98,14 @@ async def main():
                         "link": link
                     })
 
+                # 차단 방지를 위한 휴식 시간 (필수)
+                print(f"{target['name']} ({target['type']}) 수집 완료.")
                 await asyncio.sleep(5) 
                 
             except Exception as e:
                 print(f"{target['name']} 크롤링 중 오류: {e}")
+                # 오류 발생 시 스크린샷 저장 (디버깅 용도)
+                await page.screenshot(path=f"error_{target['name']}.png")
 
         await browser.close()
 
