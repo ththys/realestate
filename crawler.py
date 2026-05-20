@@ -4,7 +4,6 @@ import re
 from playwright.async_api import async_playwright
 
 # ※ 중요: 본인이 모니터링할 5개 단지의 실제 네이버 부동산 URL로 대체해야 합니다.
-# 거래 방식(매매/전세/월세)에 따라 주소창의 URL 필터 파라미터가 달라집니다.
 TARGET_LIST = [
     {"name": "염리동삼성래미안", "type": "매매", "url": "https://new.land.naver.com/complexes/1111?ms=...&a=APT&b=A1&e=RETAIL"},
     {"name": "염리동삼성래미안", "type": "전세", "url": "https://new.land.naver.com/complexes/1111?ms=...&a=APT&b=A1&e=RETAIL"},
@@ -12,7 +11,6 @@ TARGET_LIST = [
 ]
 
 def parse_price_to_int(price_str):
-    """'10억 5,000' 형태의 문자열을 정수형 원 단위로 변환 (정렬 용도)"""
     clean_str = price_str.replace(",", "").replace(" ", "").replace("원", "")
     total = 0
     if "억" in clean_str:
@@ -73,7 +71,6 @@ async def main():
                         "link": link
                     })
 
-                # 차단 방지를 위한 간격 설정
                 await asyncio.sleep(5) 
                 
             except Exception as e:
@@ -81,7 +78,6 @@ async def main():
 
         await browser.close()
 
-    # 웹페이지가 읽어갈 수 있도록 data.json 파일로 저장
     with open("data.json", "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=4)
         
